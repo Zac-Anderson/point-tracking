@@ -1,0 +1,16 @@
+#!/bin/bash
+
+set -eux
+
+DEMO=$(cd $(dirname "$0")/.. && pwd)
+
+(
+  cd ${DEMO}
+  git pull --rebase --stat
+
+  cd ${DEMO}/scripts
+  ./test
+
+  cd ${DEMO}
+  git push
+)

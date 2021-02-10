@@ -1,0 +1,11 @@
+#!/bin/bash
+
+set -eux
+
+DEMO=$(cd $(dirname "$0")/.. && pwd)
+
+(
+  pushd ${DEMO}/backend
+
+  ./gradlew clean bootRun
+)
