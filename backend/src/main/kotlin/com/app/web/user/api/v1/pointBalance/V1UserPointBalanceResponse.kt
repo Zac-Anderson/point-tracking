@@ -1,4 +1,4 @@
-package com.app.web.user.api.v1
+package com.app.web.user.api.v1.pointBalance
 
 import com.domain.user.User
 

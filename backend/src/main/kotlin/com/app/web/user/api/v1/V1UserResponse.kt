@@ -1,5 +1,7 @@
 package com.app.web.user.api.v1
 
+import com.app.web.user.api.v1.pointBalance.V1UserPointBalanceResponse
+import com.app.web.user.api.v1.pointBalance.V1UserPointBalanceResponseTranslator
 import com.domain.user.User
 
 data class V1UserResponse(

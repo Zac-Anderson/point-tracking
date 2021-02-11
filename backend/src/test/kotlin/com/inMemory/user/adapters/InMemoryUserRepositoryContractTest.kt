@@ -18,6 +18,7 @@ class InMemoryUserRepositoryContractTest : UserRepositoryContractTest() {
     private lateinit var userCache: UserCache
 
     override fun buildSubject(): UserRepository {
+        userCache.clear()
         return InMemoryUserRepository(userCache)
     }
 }
