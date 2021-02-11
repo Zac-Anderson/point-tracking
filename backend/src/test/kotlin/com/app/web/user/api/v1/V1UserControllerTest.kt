@@ -79,6 +79,43 @@ class V1UserControllerTest {
     }
 
     @Test
+    fun `showBalance should return the user's point balance`() {
+        val user = User(
+            pointBalance = listOf(
+                User.PointBalance(
+                    payer = "DANNON",
+                    points = 1000
+                ),
+                User.PointBalance(
+                    payer = "UNILEVER",
+                    points = 5000
+                )
+            )
+        )
+
+        whenever(mockGetUserUseCase.execute()).thenReturn(user)
+
+        mockMvc.perform(MockMvcRequestBuilders.get("/api/v1/user/balance"))
+            .andExpect(MockMvcResultMatchers.status().isOk)
+            .andExpect(
+                MockMvcResultMatchers.content().json(
+                    """
+                        [
+                            {
+                                "payer": "DANNON",
+                                "points": 1000
+                            },
+                            {
+                                "payer": "UNILEVER",
+                                "points": 5000
+                            }
+                        ]
+                    """
+                )
+            )
+    }
+
+    @Test
     fun `addPoints should return a 201 Created Code when points are successfully added`() {
         val json = """
                         [
