@@ -5,10 +5,13 @@ import com.domain.user.User
 import com.domain.user.ports.UserRepository
 import com.inMemory.PointsNotUpdatedException
 import com.inMemory.user.InMemoryUser
-import com.inMemory.user.InMemoryUser.*
+import com.inMemory.user.InMemoryUser.InMemoryPointBalance
 import com.inMemory.user.InMemoryUserTranslator
 import com.inMemory.user.UserCache
 import org.springframework.stereotype.Component
+import java.sql.Timestamp
+import java.time.LocalDateTime
+import kotlin.math.absoluteValue
 
 @Component
 class InMemoryUserRepository(
@@ -26,6 +29,21 @@ class InMemoryUserRepository(
         userCache["user"] = InMemoryUser(pointBalance = updatedPointBalance)
     }
 
+    override fun deductPoints(points: Int): List<PointBalanceLedger> {
+        val user = findOrCreateInMemoryUser()
+        if (user.getTotalPoints() < points) throw PointsNotUpdatedException("Not enough total points in balance")
+
+        val ledger = calculatePayerPointDeductions(user, points).map {
+            PointBalanceLedger(
+                it.key, it.value, Timestamp.valueOf(LocalDateTime.now())
+            )
+        }
+
+        addPoints(ledger)
+
+        return ledger.filter { it.points != 0 }
+    }
+
     private fun findOrCreateInMemoryUser(): InMemoryUser {
         return when (userCache.size) {
             0 -> {
@@ -36,7 +54,10 @@ class InMemoryUserRepository(
         }
     }
 
-    private fun verifyPointLedgerAddition(user: InMemoryUser, pointBalanceLedger: List<PointBalanceLedger>): List<InMemoryPointBalance> {
+    private fun verifyPointLedgerAddition(
+        user: InMemoryUser,
+        pointBalanceLedger: List<PointBalanceLedger>
+    ): List<InMemoryPointBalance> {
         val existingPointBalanceList = user.pointBalance.toMutableList()
 
         val pointBalanceLedgerUpdateList = pointBalanceLedger.map {
@@ -48,21 +69,57 @@ class InMemoryUserRepository(
         }
         existingPointBalanceList.addAll(pointBalanceLedgerUpdateList)
 
-        val sortedList = existingPointBalanceList.toList().sortedWith(compareBy { it.transactionDate })
+        val unvalidatedList = existingPointBalanceList.toList().sortedWith(compareBy { it.transactionDate })
+        val inProgressList = mutableListOf<InMemoryPointBalance>()
 
-        val map = HashMap<String, Int>()
+        unvalidatedList.forEach { record ->
+            if (record.points > 0) {
+                inProgressList.add(record)
+            } else {
+                var pointsToSubtract = record.points.absoluteValue
+                val payerRecords = inProgressList.toList().filter { it.payer.equals(record.payer, ignoreCase = true) }
 
-        sortedList.forEach { record ->
-            when (map[record.payer.toUpperCase()]) {
-                null -> map[record.payer.toUpperCase()] = record.points
-                else -> map[record.payer.toUpperCase()] = map[record.payer.toUpperCase()]!! + record.points
-            }
+                for (value in payerRecords) {
+                    if (pointsToSubtract >= value.points) {
+                        inProgressList.remove(value)
+                        inProgressList.add(value.copy(points = 0))
+                        pointsToSubtract -= value.points
+                    } else if (pointsToSubtract < value.points && pointsToSubtract != 0) {
+                        inProgressList.remove(value)
+                        inProgressList.add(value.copy(points = value.points - pointsToSubtract))
+                        pointsToSubtract = 0
+                        break
+                    }
+                }
 
-            if (map[record.payer.toUpperCase()]!! < 0) {
-                throw PointsNotUpdatedException("${record.payer.toUpperCase()} can't go below 0 points")
+                if (pointsToSubtract != 0) throw PointsNotUpdatedException("${record.payer.toUpperCase()} can't go below 0 points")
             }
         }
 
-        return sortedList
+        return inProgressList.toList().sortedWith(compareBy { it.transactionDate })
+    }
+
+    private fun calculatePayerPointDeductions(user: InMemoryUser, points: Int): HashMap<String, Int> {
+        val map = HashMap<String, Int>()
+        var remainingPoints = points
+
+        for (record in user.pointBalance) {
+            if (remainingPoints - record.points > 0) {
+                remainingPoints -= record.points
+                when (map[record.payer.toUpperCase()]) {
+                    null -> map[record.payer.toUpperCase()] = -record.points
+                    else -> map[record.payer.toUpperCase()] = map[record.payer.toUpperCase()]!! - record.points
+                }
+            } else {
+                when (map[record.payer.toUpperCase()]) {
+                    null -> map[record.payer.toUpperCase()] = -remainingPoints
+                    else -> map[record.payer.toUpperCase()] = map[record.payer.toUpperCase()]!! - remainingPoints
+                }
+
+                break
+            }
+        }
+
+        return map
     }
 }

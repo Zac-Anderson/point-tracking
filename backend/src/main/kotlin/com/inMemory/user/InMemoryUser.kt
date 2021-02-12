@@ -26,6 +26,14 @@ data class InMemoryUser(
 
         return map
     }
+
+    fun getTotalPoints(): Int {
+        var total = 0
+
+        this.pointBalance.forEach { total += it.points }
+
+        return total
+    }
 }
 
 object InMemoryUserTranslator {

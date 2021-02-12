@@ -1,7 +1,9 @@
 package com.app.web.user.api.v1
 
+import com.domain.user.PointBalanceLedger
 import com.domain.user.User
 import com.domain.user.usecases.AddUserPointsUseCase
+import com.domain.user.usecases.DeductUserPointsUseCase
 import com.domain.user.usecases.GetUserUseCase
 import com.inMemory.PointsNotUpdatedException
 import com.nhaarman.mockitokotlin2.any
@@ -19,6 +21,7 @@ import org.springframework.test.web.servlet.request.MockMvcRequestBuilders
 import org.springframework.test.web.servlet.result.MockMvcResultMatchers
 import org.springframework.test.web.servlet.setup.MockMvcBuilders
 import org.springframework.web.context.WebApplicationContext
+import java.sql.Timestamp
 
 @SpringBootTest
 @RunWith(SpringRunner::class)
@@ -33,6 +36,9 @@ class V1UserControllerTest {
 
     @MockBean
     private lateinit var mockAddUserPointsUseCase: AddUserPointsUseCase
+
+    @MockBean
+    private lateinit var mockDeductUserPointsUseCase: DeductUserPointsUseCase
 
     @Before
     fun setUp() {
@@ -132,7 +138,7 @@ class V1UserControllerTest {
     }
 
     @Test
-    fun `addPoints should return a Bad Request when points are successfully added`() {
+    fun `addPoints should return a Bad Request when points are aren't added successfully`() {
         whenever(mockAddUserPointsUseCase.execute(any())).thenAnswer {
             throw PointsNotUpdatedException("Unable to add points")
         }
@@ -148,6 +154,46 @@ class V1UserControllerTest {
             MockMvcRequestBuilders.post("/api/v1/user/add")
                 .contentType(APPLICATION_JSON).content(json)
         )
+            .andExpect(MockMvcResultMatchers.status().isBadRequest)
+    }
+
+    @Test
+    fun `deductPoints should return a list of payers and how much points were deducted from them`() {
+        val now = Timestamp.valueOf("2021-02-11 12:00:00")
+        val dannonDeduction = PointBalanceLedger("DANNON", -500, now)
+        val unileverDeduction = PointBalanceLedger("UNILEVER", -500, now)
+
+        whenever(mockDeductUserPointsUseCase.execute(any())).thenReturn(listOf(dannonDeduction, unileverDeduction))
+
+        mockMvc.perform(MockMvcRequestBuilders.put("/api/v1/user/deduct?points=1000"))
+            .andExpect(MockMvcResultMatchers.status().isOk)
+            .andExpect(
+                MockMvcResultMatchers.content().json(
+                    """
+                        [
+                            {
+                                "payer": "DANNON",
+                                "points": -500,
+                                "date": "2021-02-11T20:00:00.000+00:00"
+                            },
+                            {
+                                "payer": "UNILEVER",
+                                "points": -500,
+                                "date": "2021-02-11T20:00:00.000+00:00"
+                            }
+                        ]
+                    """
+                )
+            )
+    }
+
+    @Test
+    fun `deductPoints should return a Bad Request when points are aren't deducted successfully`() {
+        whenever(mockDeductUserPointsUseCase.execute(any())).thenAnswer {
+            throw PointsNotUpdatedException("Unable to add points")
+        }
+
+        mockMvc.perform(MockMvcRequestBuilders.put("/api/v1/user/deduct?points=1000"))
             .andExpect(MockMvcResultMatchers.status().isBadRequest)
     }
 }
